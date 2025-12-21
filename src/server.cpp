@@ -7,6 +7,8 @@
 #include <cstring>  // strcmp, strtok
 #include <sstream>  // parsing strings
 #include <vector>   // splitting commands
+#include <arpa/inet.h> // htons
+#include <netinet/in.h> // sockaddr_in
 
 /*
     Constructor method for Server class.
@@ -98,67 +100,88 @@ void Server::start() {
         void
 */
 void Server::handle_client(int client_socket) {
-    // TODO: create a buffer array
-    char buffer[1024] = {0}; // 1024 bytes buffer for data, initialized to 0
+    // create a buffer
+    std::string buffer;
+    char chunk[1024] = {0}; // 1024 bytes buffer for data, initialized to 0
 
-    // TODO: read data from socket
-    ssize_t bytes_read = read(client_socket, buffer, sizeof(buffer) - 1);
-    if (bytes_read <= 0) { // connection closed or error
-        close(client_socket);
-        return;
-    }
-    buffer[bytes_read] = '\0'; // null-terminate the string
+    while (true) {
+        memset(chunk, 0, sizeof(chunk)); // clear chunk
 
-    // TODO: parse command (SET, GET, DEL)
-    std::istringstream iss(buffer);
-    std::string command;
-    iss >> command; // extract first word (command)
-
-    // based on command, call the appropriate KVStore function
-    if (command == "SET") { // handle SET command
-        std::string key, value;
-        iss >> key >> value; // extract key and value
-        if (!key.empty() && !value.empty()) {
-            store_.set(key, value);
-            std::string response = "OK\n";
-            write(client_socket, response.c_str(), response.length());
-        } else { // invalid command
-            std::string response = "ERROR: SET requires key and value\n";
-            write(client_socket, response.c_str(), response.length());
+        // read data from socket
+        ssize_t bytes_read = read(client_socket, chunk, sizeof(chunk) - 1);
+        if (bytes_read <= 0) { // connection closed or error
+            break; // exit loop
         }
-    } else if (command == "GET") { // handle GET command
-        std::string key;
-        iss >> key; // extract key
+        chunk[bytes_read] = '\0'; // null-terminate the string
+        buffer += chunk; // append chunk to buffer
 
-        if (!key.empty()) {
-            std::string value = store_.get(key);
-            if (!value.empty()) {
-                std::string response = value + "\n";
-                write(client_socket, response.c_str(), response.length());
+        size_t pos;
+        while ((pos = buffer.find('\n')) != std::string::npos) {
+            std::string line = buffer.substr(0, pos); // extract one line
+            buffer.erase(0, pos + 1); // remove the line from the buffer
+
+            if (line.empty()) {
+                continue; // skip empty lines
+            }
+
+            // parse command (SET, GET, DEL)
+            std::istringstream iss(line);
+            std::string command;
+            iss >> command; // extract command
+
+            // based on command, call the appropriate KVStore function
+            if (command == "SET") { // handle SET command
+                std::string key, value;
+                iss >> key; // extract key
+                std::getline(iss, value); // extract value from rest of line
+
+                if (!value.empty() && value[0] == ' ') {
+                    value.erase(0, 1); // remove leading spaces
+                }
+
+                if (!key.empty() && !value.empty()) {
+                    store_.set(key, value);
+                    std::string response = "OK\n";
+                    write(client_socket, response.c_str(), response.length());
+                } else { // invalid command
+                    std::string response = "ERROR: SET requires key and value\n";
+                    write(client_socket, response.c_str(), response.length());
+                }
+            } else if (command == "GET") { // handle GET command
+                std::string key;
+                iss >> key; // extract key
+
+                if (!key.empty()) {
+                    std::string value = store_.get(key);
+                    if (!value.empty()) {
+                        std::string response = value + "\n";
+                        write(client_socket, response.c_str(), response.length());
+                    } else {
+                        std::string response = "NOT_FOUND\n";
+                        write(client_socket, response.c_str(), response.length());
+                    }
+                } else {
+                    std::string response = "ERROR: GET requires key\n";
+                    write(client_socket, response.c_str(), response.length());
+                }
+            } else if (command == "DEL") {
+                std::string key;
+                iss >> key; // extract key
+
+                if (!key.empty()) {
+                    bool deleted = store_.remove(key);
+                    std::string response = deleted ? "DELETED\n" : "NOT_FOUND\n";
+                    write(client_socket, response.c_str(), response.length());
+                } else {
+                    std::string response = "ERROR: DEL requires key\n";
+                    write(client_socket, response.c_str(), response.length());
+                }
             } else {
-                std::string response = "NOT_FOUND\n";
+                std::string response = "ERROR: Unknown command\n";
                 write(client_socket, response.c_str(), response.length());
             }
-        } else {
-            std::string response = "ERROR: GET requires key\n";
-            write(client_socket, response.c_str(), response.length());
         }
-    } else if (command == "DEL") {
-        std::string key;
-        iss >> key; // extract key
-
-        if (!key.empty()) {
-            bool deleted = store_.remove(key);
-            std::string response = deleted ? "DELETED\n" : "NOT_FOUND\n";
-            write(client_socket, response.c_str(), response.length());
-        } else {
-            std::string response = "ERROR: DEL requires key\n";
-            write(client_socket, response.c_str(), response.length());
-        }
-    } else {
-        std::string response = "ERROR: Unknown command\n";
-        write(client_socket, response.c_str(), response.length());
     }
-
+    
     close(client_socket);
 }
