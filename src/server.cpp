@@ -62,12 +62,24 @@ Server::~Server() {
 void Server::start() {
     std::cout << "Server starting on port " << port_ << std::endl;
 
-    while (true) {
-        // TODO: call accept() to get a client socket
-        // int client_fd = accept(...)
+    struct sockaddr_in client_address; // stores client IP address and port
+    socklen_t client_address_len = sizeof(client_address); // needed for accept()
 
-        // TODO: spawn a new thread to handle this client
-        // std::thread(&Server::handle_client, this, client_fd).detach();
+    while (true) {
+        // call accept() to get a client socket
+        int client_fd = accept(server_fd_, (struct sockaddr*) &client_address, &client_address_len);
+        if (client_fd < 0) { // accept() error
+            std::cerr << "Failed to accept client connection" << std::endl;
+            continue; // skip to next iteration
+        }
+
+        /*
+            Spawn a new thread to handle this client
+            This: current Server object
+            Client_fd: client socket passed to handle_client()
+            Detach: thread runs independently of the main thread
+        */
+        std::thread(&Server::handle_client, this, client_fd).detach();
     }
 }
 
