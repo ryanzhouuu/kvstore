@@ -6,7 +6,7 @@
 class KVStore {
 private:
     std::unordered_map<std::string, std::string> data_;
-    mutable std::shared_timed_mutex mutex; 
+    mutable std::shared_timed_mutex mtx_; 
 public:
     void set(const std::string& key, const std::string& value);
     std::string get(const std::string& key);
