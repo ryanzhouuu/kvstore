@@ -129,6 +129,8 @@ void Server::handle_client(int client_socket) {
             std::string command;
             iss >> command; // extract command
 
+            std::string response;
+
             // based on command, call the appropriate KVStore function
             if (command == "SET") { // handle SET command
                 std::string key, value;
@@ -141,11 +143,9 @@ void Server::handle_client(int client_socket) {
 
                 if (!key.empty() && !value.empty()) {
                     store_.set(key, value);
-                    std::string response = "OK\n";
-                    write(client_socket, response.c_str(), response.length());
+                    response = "OK\n";
                 } else { // invalid command
-                    std::string response = "ERROR: SET requires key and value\n";
-                    write(client_socket, response.c_str(), response.length());
+                    response = "ERROR: SET requires key and value\n";
                 }
             } else if (command == "GET") { // handle GET command
                 std::string key;
@@ -154,15 +154,12 @@ void Server::handle_client(int client_socket) {
                 if (!key.empty()) {
                     std::string value = store_.get(key);
                     if (!value.empty()) {
-                        std::string response = value + "\n";
-                        write(client_socket, response.c_str(), response.length());
+                        response = value + "\n";
                     } else {
-                        std::string response = "NOT_FOUND\n";
-                        write(client_socket, response.c_str(), response.length());
+                        response = "NOT_FOUND\n";
                     }
                 } else {
-                    std::string response = "ERROR: GET requires key\n";
-                    write(client_socket, response.c_str(), response.length());
+                    response = "ERROR: GET requires key\n";
                 }
             } else if (command == "DEL") {
                 std::string key;
@@ -170,15 +167,19 @@ void Server::handle_client(int client_socket) {
 
                 if (!key.empty()) {
                     bool deleted = store_.remove(key);
-                    std::string response = deleted ? "DELETED\n" : "NOT_FOUND\n";
-                    write(client_socket, response.c_str(), response.length());
+                    response = deleted ? "DELETED\n" : "NOT_FOUND\n";
                 } else {
-                    std::string response = "ERROR: DEL requires key\n";
-                    write(client_socket, response.c_str(), response.length());
+                    response = "ERROR: DEL requires key\n";
                 }
             } else {
-                std::string response = "ERROR: Unknown command\n";
-                write(client_socket, response.c_str(), response.length());
+                response = "ERROR: Unknown command\n";
+            }
+
+            // send response and handle errors
+            int bytes_written = write(client_socket, response.c_str(), response.length());
+            if (bytes_written < 0) { // connnection most likely broken
+                close(client_socket);
+                return;
             }
         }
     }
